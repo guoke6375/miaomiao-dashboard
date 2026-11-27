@@ -456,7 +456,7 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
     <!-- ==== 功能：目标 START ==== -->
     <section class="page" id="page-goal">
       <div class="page-title">目标</div>
-      <div class="page-sub">今年只要三件，多了就是许愿</div>
+      <div class="page-sub">写下想做的一件事，标个进度，慢慢推进</div>
 
       <div class="card wide">
         <div class="hero num" id="goalHero">0<span class="unit">% 平均完成</span></div>
@@ -464,14 +464,13 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
       </div>
 
       <div class="card wide">
-        <h2>🎯 今年的目标</h2>
+        <h2>🎯 想做的一件事</h2>
         <div id="goalList"></div>
         <div class="row" style="margin-top:16px">
-          <input type="text" id="goalInput" placeholder="想做成的一件事">
+          <input type="text" id="goalInput" placeholder="想做的一件事">
         </div>
         <div class="row" style="margin-top:8px">
-          <input type="number" id="goalTarget" placeholder="目标数" inputmode="decimal" style="flex:1">
-          <input type="text" id="goalUnit" placeholder="单位" style="flex:1">
+          <input type="number" id="goalProgress" placeholder="目前进度 %" inputmode="decimal" min="0" max="100" style="flex:1">
           <button class="btn" onclick="Goal.add()">添加</button>
         </div>
       </div>
@@ -1479,24 +1478,27 @@ const Money = {
 const Goal = {
   list(){ return Store.list('goals'); },
 
+  /** 进度百分比：新数据存 progress，老数据按 target/current 折算 */
+  pct(g){
+    if (typeof g.progress === 'number') return Math.max(0, Math.min(100, Math.round(g.progress)));
+    if (g.target) return Math.max(0, Math.min(100, Math.round((g.current || 0) / g.target * 100)));
+    return 0;
+  },
+
   add(){
     const t = document.getElementById('goalInput').value.trim();
-    const target = parseFloat(document.getElementById('goalTarget').value);
-    const unit = document.getElementById('goalUnit').value.trim() || '次';
-    if (!t) return UI.toast('先写目标是什么');
-    if (!(target > 0)) return UI.toast('填个目标数');
-    Store.upsert('goals', { title: t, target, unit, current: 0 });
+    const p = parseFloat(document.getElementById('goalProgress').value);
+    if (!t) return UI.toast('先写想做的那件事');
+    Store.upsert('goals', { title: t, progress: isNaN(p) ? 0 : Math.max(0, Math.min(100, p)) });
     document.getElementById('goalInput').value = '';
-    document.getElementById('goalTarget').value = '';
-    document.getElementById('goalUnit').value = '';
+    document.getElementById('goalProgress').value = '';
     this.render();
   },
 
   bump(id, d){
     const g = this.list().find(x => x.id === id);
     if (!g) return;
-    const cur = Math.max(0, Math.min(g.target, (g.current || 0) + d));
-    Store.upsert('goals', Object.assign({}, g, { current: cur }));
+    Store.upsert('goals', Object.assign({}, g, { progress: Math.max(0, Math.min(100, this.pct(g) + d)) }));
     this.render();
   },
 
@@ -1504,31 +1506,31 @@ const Goal = {
 
   render(){
     const gs = this.list();
-    const pct = gs.length
-      ? Math.round(gs.reduce((s, g) => s + Math.min(1, (g.current || 0) / g.target), 0) / gs.length * 100)
+    const avg = gs.length
+      ? Math.round(gs.reduce((s, g) => s + this.pct(g), 0) / gs.length)
       : 0;
 
-    document.getElementById('goalHero').innerHTML = `${pct}<span class="unit">% 平均完成</span>`;
+    document.getElementById('goalHero').innerHTML = `${avg}<span class="unit">% 平均进度</span>`;
     document.getElementById('goalHint').textContent = gs.length
-      ? `共 ${gs.length} 个目标，已达成 ${gs.filter(g => g.current >= g.target).length} 个`
-      : '还没有目标。写下今年最想做成的那一件。';
+      ? `共 ${gs.length} 件，已做完 ${gs.filter(g => this.pct(g) >= 100).length} 件`
+      : '还没有想做的事。写一件你最想推进的。';
 
     document.getElementById('goalList').innerHTML = gs.map(g => {
-      const p = Math.min(100, Math.round((g.current || 0) / g.target * 100));
+      const p = this.pct(g);
       return `<div style="padding:12px 0;border-bottom:1px dashed rgba(128,128,128,.22)">
         <div class="goal-head">
           <span class="gt">${Util.esc(g.title)}</span>
-          <span class="gn">${g.current || 0} / ${g.target} ${Util.esc(g.unit)}</span>
+          <span class="gn">目前 ${p}%</span>
         </div>
         <div class="bar"><i style="width:${p}%"></i></div>
         <div class="goal-acts">
-          <button class="mini" onclick="Goal.bump('${g.id}',-1)">−1</button>
-          <button class="mini" onclick="Goal.bump('${g.id}',1)">+1</button>
-          <span class="hint" style="margin-left:auto">${p}%</span>
-          <button class="del" onclick="Goal.del('${g.id}')">✕</button>
+          <button class="mini" onclick="Goal.bump('${g.id}',-5)">−5%</button>
+          <button class="mini" onclick="Goal.bump('${g.id}',5)">+5%</button>
+          ${p >= 100 ? '<span class="hint" style="margin-left:auto">做完了 🎉</span>' : ''}
+          <button class="del" onclick="Goal.del('${g.id}')" style="margin-left:auto">✕</button>
         </div>
       </div>`;
-    }).join('') || '<div class="empty">还没有目标</div>';
+    }).join('') || '<div class="empty">还没有想做的事</div>';
   }
 };
 /* ==== 功能：目标 END ==== */
