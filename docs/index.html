@@ -1056,7 +1056,7 @@ const Today = {
     document.getElementById('todoList').innerHTML = list.length
       ? list.map(x => `<div class="item ${x.done ? 'done' : ''}">
           <button class="box" onclick="Todo.toggle('${x.id}')">${x.done ? '✓' : ''}</button>
-          <span class="grow">${Util.esc(x.text)}${x.deadline ? `<span class="tag">${x.deadline} 前</span>` : ''}${x.carried ? '<span class="tag">昨天</span>' : ''}</span>
+          <span class="grow">${Util.esc(x.text)}${x.deadline ? `<span class="tag">${x.deadline} 前</span>` : ''}${x.reminded ? '<span class="tag">🔔</span>' : ''}${x.carried ? '<span class="tag">昨天</span>' : ''}</span>
           <button class="del" onclick="Todo.editTime('${x.id}','today')" title="设时间">⏰</button>
           <button class="del" onclick="Todo.del('${x.id}')">✕</button>
         </div>`).join('')
@@ -1065,7 +1065,7 @@ const Today = {
     const tm = Todo.tomorrowList();
     document.getElementById('tomorrowList').innerHTML = tm.length
       ? tm.map(x => `<div class="item">
-          <span class="grow">${Util.esc(x.text)}${x.deadline ? `<span class="tag">${x.deadline} 前</span>` : ''}</span>
+          <span class="grow">${Util.esc(x.text)}${x.deadline ? `<span class="tag">${x.deadline} 前</span>` : ''}${x.reminded ? '<span class="tag">🔔</span>' : ''}</span>
           <button class="del" onclick="Todo.editTime('${x.id}','tomorrow')" title="设时间">⏰</button>
           <button class="del" onclick="Todo.promote('${x.id}')">→今天</button>
           <button class="del" onclick="Todo.delTomorrow('${x.id}')">✕</button>
@@ -1215,6 +1215,13 @@ const Todo = {
       'END:VEVENT', 'END:VCALENDAR'
     ].join('\r\n');
 
+    // 写回任务：记下时间，并标记「已设提醒」
+    if (e.id) {
+      const rk = e.where === 'tomorrow' ? 'todo:' + this.tomorrowKey() : 'todo:' + Util.today();
+      const rit = Store.list(rk).find(x => x.id === e.id);
+      if (rit) Store.upsert(rk, Object.assign({}, rit, { deadline: time, lead: lead, reminded: true }));
+    }
+
     const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1222,6 +1229,8 @@ const Todo = {
     a.download = '提醒.ics';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
+    this.closeModal();
+    this.render();
     UI.toast('日历文件已生成，点「允许」加进日历');
   },
 
