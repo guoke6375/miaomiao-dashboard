@@ -132,6 +132,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
 .btn.ghost{background:transparent;color:var(--text);border:1px solid rgba(128,128,128,.3)}
 .btn.danger{background:#d9534f}
 .btn:active{opacity:.75}
+a.btn{display:inline-block;text-decoration:none;text-align:center;line-height:1.2}
 .row{display:flex;gap:8px;align-items:center}
 .row .btn{flex-shrink:0}
 
@@ -337,10 +338,12 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
       </div>
 
       <div class="card wide">
-        <h2>💭 一句心情</h2>
-        <textarea id="moodInput" placeholder="今天怎么样？一句话就够，不用写成作文"
-                  onblur="Mood.save()"></textarea>
-        <p class="hint">切走就自动保存，只存在这台手机里。</p>
+        <h2>🧾 改价审核</h2>
+        <p class="hint">客户改了价，要你点头才算数。点下面直接进审核页，处理完再回来记一笔。</p>
+        <div class="row" style="margin-top:12px">
+          <a class="btn" href="http://49.232.224.153:3000/admin/price-approvals" target="_blank" rel="noopener">打开改价审核</a>
+        </div>
+        <p class="hint">想让它自动显示「待审 N 条」，需要 ERP 那边开一个只读接口。</p>
       </div>
     </section>
     <!-- ==== 功能：今天 END ==== -->
@@ -960,7 +963,6 @@ const Stats = {
   hasRecord(ds){
     return Store.count('todo:' + ds) > 0
         || Store.count('chk:' + ds) > 0
-        || !!Store.get('mood:' + ds, '')
         || Store.list('weights').some(w => w.date === ds)
         || Store.list('money').some(m => m.date === ds);
   },
@@ -1003,8 +1005,6 @@ const Today = {
           <button class="del" onclick="Todo.del('${x.id}')">✕</button>
         </div>`).join('')
       : '<div class="empty">今天还没有安排，先写一件最重要的事</div>';
-
-    document.getElementById('moodInput').value = Store.getDaily('mood', '') || '';
 
     Carry.render();
   }
@@ -1111,12 +1111,7 @@ const Carry = {
   }
 };
 
-const Mood = {
-  save(){
-    const v = document.getElementById('moodInput').value.trim();
-    Store.setDaily('mood', v);
-  }
-};
+const Mood = null;
 /* ==== 功能：今天 END ==== */
 
 
