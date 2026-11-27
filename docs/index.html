@@ -170,6 +170,18 @@ a.btn{display:inline-block;text-decoration:none;text-align:center;line-height:1.
 }
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* 时间设置弹层 */
+.modal{position:fixed;inset:0;z-index:120;display:none;align-items:flex-end;justify-content:center;
+  background:rgba(0,0,0,.45);padding:0 0 env(safe-area-inset-bottom,0)}
+.modal.on{display:flex}
+.modal-card{width:100%;max-width:520px;background:var(--card);border-radius:22px 22px 0 0;
+  padding:22px 18px calc(18px + env(safe-area-inset-bottom,0));box-shadow:0 -8px 30px rgba(0,0,0,.18)}
+.modal-card h3{font-size:18px;font-weight:500;margin-bottom:6px}
+.modal-card label{font-size:13px;color:var(--text-dim);display:block;margin-bottom:6px}
+.modal-card select{width:100%;font-size:16px;padding:11px 13px;border-radius:10px;
+  border:1px solid rgba(128,128,128,.28);background:transparent;color:var(--text);font-family:inherit}
+@media (min-width:700px){.modal{align-items:center}.modal-card{border-radius:var(--radius)}}
+
 /* ════════ 动画 ════════
    只做「让状态变化可理解」的动画，不做炫技的。
    这是一天开十次的工具，任何多余动效第十次看就烦了。 */
@@ -317,8 +329,6 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
       <div class="page-title" id="todayGreet">今天</div>
       <div class="page-sub" id="todayDate"></div>
 
-      <div class="carry" id="carryBox" style="display:none"></div>
-
       <div class="card wide">
         <div class="hero" id="todayHero">0<span class="unit">件做完了</span></div>
         <p class="hint" id="todayStreak"></p>
@@ -335,7 +345,18 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
           <button class="btn" onclick="Todo.add()">加入</button>
         </div>
         <div id="todoList" style="margin-top:6px"></div>
-        <p class="hint">过了今天就自动清空，不留昨天的包袱。</p>
+        <p class="hint">昨天没做完的会自己跟过来。点 ⏰ 设个时间，能加进手机日历提醒你。</p>
+      </div>
+
+      <div class="card wide">
+        <h2>🌙 明日待办</h2>
+        <div class="row">
+          <input type="text" id="tomorrowInput" placeholder="今天先想好明天做什么"
+                 onkeydown="if(event.key==='Enter')Todo.addTomorrow()">
+          <button class="btn" onclick="Todo.addTomorrow()">加入</button>
+        </div>
+        <div id="tomorrowList" style="margin-top:6px"></div>
+        <p class="hint">过了零点自动变成「今天要做」，不用手动搬。</p>
       </div>
 
       <div class="card wide">
@@ -546,6 +567,34 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ==== 时间设置弹层 START ==== -->
+<div class="modal" id="timeModal">
+  <div class="modal-card">
+    <h3>设置时间</h3>
+    <p class="hint" id="tmTask" style="margin-top:0;margin-bottom:14px"></p>
+    <label>几点前完成（不填就是不设）</label>
+    <input type="time" id="tmTime">
+    <label style="display:block;margin-top:14px">提前多久提醒</label>
+    <select id="tmLead">
+      <option value="5">提前 5 分钟</option>
+      <option value="10" selected>提前 10 分钟</option>
+      <option value="15">提前 15 分钟</option>
+      <option value="30">提前 30 分钟</option>
+      <option value="60">提前 1 小时</option>
+    </select>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" onclick="Todo.saveTime()">保存</button>
+      <button class="btn ghost" onclick="Todo.addToCalendar()">加到日历</button>
+      <button class="btn ghost" onclick="Todo.closeModal()">取消</button>
+    </div>
+    <p class="hint">
+      「加到日历」会把这条写进手机日历，到点前自动响——iOS 上唯一不依赖服务器的定时提醒。
+      第一次用会弹出「添加到日历」，点允许就行。
+    </p>
+  </div>
+</div>
+<!-- ==== 时间设置弹层 END ==== -->
 
 <script>
 /* ═══════════════════════════════════════════════════════════
@@ -983,6 +1032,8 @@ const Stats = {
 
 const Today = {
   render(){
+    Todo.rollover();
+
     const d = new Date(), h = d.getHours();
     const wd = '日一二三四五六'[d.getDay()];
     document.getElementById('todayDate').textContent =
@@ -1005,39 +1056,178 @@ const Today = {
     document.getElementById('todoList').innerHTML = list.length
       ? list.map(x => `<div class="item ${x.done ? 'done' : ''}">
           <button class="box" onclick="Todo.toggle('${x.id}')">${x.done ? '✓' : ''}</button>
-          <span class="grow">${Util.esc(x.text)}${x.carried ? '<span class="tag">昨天</span>' : ''}</span>
+          <span class="grow">${Util.esc(x.text)}${x.deadline ? `<span class="tag">${x.deadline} 前</span>` : ''}${x.carried ? '<span class="tag">昨天</span>' : ''}</span>
+          <button class="del" onclick="Todo.editTime('${x.id}','today')" title="设时间">⏰</button>
           <button class="del" onclick="Todo.del('${x.id}')">✕</button>
         </div>`).join('')
       : '<div class="empty">今天还没有安排，先写一件最重要的事</div>';
 
-    Carry.render();
+    const tm = Todo.tomorrowList();
+    document.getElementById('tomorrowList').innerHTML = tm.length
+      ? tm.map(x => `<div class="item">
+          <span class="grow">${Util.esc(x.text)}${x.deadline ? `<span class="tag">${x.deadline} 前</span>` : ''}</span>
+          <button class="del" onclick="Todo.editTime('${x.id}','tomorrow')" title="设时间">⏰</button>
+          <button class="del" onclick="Todo.promote('${x.id}')">→今天</button>
+          <button class="del" onclick="Todo.delTomorrow('${x.id}')">✕</button>
+        </div>`).join('')
+      : '<div class="empty">明天还没有安排</div>';
   }
 };
 
 const Todo = {
-  /** 没做完的在上，做完的沉底；同组内新的在前 */
+  tomorrowKey(){
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return Util.dateOf(d);
+  },
+
+  /** 过去 7 天没做完的，自动挪到今天，带「昨天」标记 */
+  rollover(){
+    for (let i = 1; i <= 7; i++){
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = 'todo:' + Util.dateOf(d);
+      Store.list(key).filter(x => !x.done).forEach(x => {
+        Store.upsertDaily('todo', {
+          text: x.text, done: false, carried: true,
+          createdAt: x.createdAt || Date.now(),
+          deadline: x.deadline || '', lead: x.lead || 10
+        });
+        Store.softDelete(key, x.id);
+      });
+    }
+  },
+
+  /** 没做完的在上；有时间的按时间排，没时间的按新加排；做完的沉底 */
   list(){
     const arr = Store.listDaily('todo');
     const byNew = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
+    const byTime = (a, b) => {
+      if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline);
+      if (a.deadline) return -1;
+      if (b.deadline) return 1;
+      return byNew(a, b);
+    };
+    return [...arr.filter(x => !x.done).sort(byTime), ...arr.filter(x => x.done).sort(byNew)];
+  },
+
+  tomorrowList(){
+    const arr = Store.list('todo:' + this.tomorrowKey());
+    const byNew = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
     return [...arr.filter(x => !x.done).sort(byNew), ...arr.filter(x => x.done).sort(byNew)];
   },
+
   add(){
     const el = document.getElementById('todoInput');
     const text = el.value.trim();
     if (!text) return;
-    Store.upsertDaily('todo', { text, done: false, createdAt: Date.now() });
+    Store.upsertDaily('todo', { text, done: false, createdAt: Date.now(), deadline: '', lead: 10 });
     el.value = '';
     this.render();
   },
+
+  addTomorrow(){
+    const el = document.getElementById('tomorrowInput');
+    const text = el.value.trim();
+    if (!text) return;
+    Store.upsert('todo:' + this.tomorrowKey(), { text, done: false, createdAt: Date.now(), deadline: '', lead: 10 });
+    el.value = '';
+    this.render();
+  },
+
   toggle(id){
     const it = Store.listDaily('todo').find(x => x.id === id);
     if (!it) return;
     Store.upsertDaily('todo', Object.assign({}, it, { done: !it.done }));
     this.render();
   },
+
   del(id){
     Store.softDelete('todo:' + Util.today(), id);
     this.render();
+  },
+
+  delTomorrow(id){
+    Store.softDelete('todo:' + this.tomorrowKey(), id);
+    this.render();
+  },
+
+  /** 明天的不想等，直接拿到今天做 */
+  promote(id){
+    const key = 'todo:' + this.tomorrowKey();
+    const it = Store.list(key).find(x => x.id === id);
+    if (!it) return;
+    Store.upsertDaily('todo', {
+      text: it.text, done: false, createdAt: Date.now(),
+      deadline: it.deadline || '', lead: it.lead || 10
+    });
+    Store.softDelete(key, id);
+    this.render();
+  },
+
+  /* ── 时间与提醒 ── */
+  editTime(id, where){
+    const key = where === 'tomorrow' ? 'todo:' + this.tomorrowKey() : 'todo:' + Util.today();
+    const it = Store.list(key).find(x => x.id === id);
+    if (!it) return;
+    this._edit = { id, where, text: it.text };
+    document.getElementById('tmTask').textContent = it.text;
+    document.getElementById('tmTime').value = it.deadline || '';
+    document.getElementById('tmLead').value = String(it.lead || 10);
+    document.getElementById('timeModal').classList.add('on');
+  },
+
+  saveTime(){
+    const e = this._edit;
+    if (!e) return;
+    const key = e.where === 'tomorrow' ? 'todo:' + this.tomorrowKey() : 'todo:' + Util.today();
+    const it = Store.list(key).find(x => x.id === e.id);
+    if (it) {
+      Store.upsert(key, Object.assign({}, it, {
+        deadline: document.getElementById('tmTime').value || '',
+        lead: parseInt(document.getElementById('tmLead').value, 10) || 10
+      }));
+    }
+    this.closeModal();
+    this.render();
+  },
+
+  /** 生成一条带闹钟的 .ics，交给系统日历去响 */
+  addToCalendar(){
+    const time = document.getElementById('tmTime').value;
+    if (!time) return UI.toast('先选一个「几点前完成」');
+    const lead = parseInt(document.getElementById('tmLead').value, 10) || 10;
+    const e = this._edit || {};
+    const date = e.where === 'tomorrow' ? this.tomorrowKey() : Util.today();
+    const dt = new Date(`${date}T${time}:00+08:00`);
+    if (isNaN(dt.getTime())) return UI.toast('时间格式不对');
+
+    const stamp = dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const name = String(e.text || '任务').replace(/[,;\\]/g, ' ');
+    const ics = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//mm//task//CN', 'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT',
+      'UID:' + (e.id || Date.now()) + '@dashboard',
+      'DTSTAMP:' + stamp,
+      'DTSTART:' + stamp,
+      'SUMMARY:' + name,
+      'BEGIN:VALARM', 'TRIGGER:-PT' + lead + 'M', 'ACTION:DISPLAY', 'DESCRIPTION:' + name, 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR'
+    ].join('\r\n');
+
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '提醒.ics';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    UI.toast('日历文件已生成，点「允许」加进日历');
+  },
+
+  closeModal(){
+    document.getElementById('timeModal').classList.remove('on');
+    this._edit = null;
   },
 
   /** 做完的一键清掉，清完还给 6 秒撤销的机会 */
@@ -1062,57 +1252,6 @@ const Todo = {
   },
 
   render(){ Today.render(); }
-};
-
-/** 昨天没做完的：提醒一下，点一下就挪到今天，带「昨天」标记 */
-const Carry = {
-  dayKey(){
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return Util.dateOf(d);
-  },
-  items(){
-    return Store.list('todo:' + this.dayKey()).filter(x => !x.done);
-  },
-
-  render(){
-    const box = document.getElementById('carryBox');
-    if (!box) return;
-    const items = this.items();
-    if (!items.length || Store.getDaily('carryDismissed')){
-      box.style.display = 'none';
-      box.innerHTML = '';
-      return;
-    }
-    const names = items.slice(0, 2).map(x => Util.esc(x.text)).join('、')
-      + (items.length > 2 ? ` 等 ${items.length} 件` : '');
-    box.style.display = '';
-    box.innerHTML = `
-      <div>昨天还有 <b>${items.length}</b> 件没做完：${names}</div>
-      <div class="acts">
-        <button class="mini" onclick="Carry.move()">挪到今天</button>
-        <button class="mini" onclick="Carry.dismiss()">留在昨天</button>
-      </div>`;
-  },
-
-  move(){
-    const src = 'todo:' + this.dayKey();
-    this.items().forEach(x => {
-      Store.upsertDaily('todo', { text: x.text, done: false, createdAt: Date.now(), carried: true });
-      Store.softDelete(src, x.id);
-    });
-    Store.setDaily('carryDismissed', 1);
-    UI.toast('已挪到今天');
-    Today.render();
-  },
-
-  dismiss(){
-    Store.setDaily('carryDismissed', 1);
-    const box = document.getElementById('carryBox');
-    box.style.display = 'none';
-    box.innerHTML = '';
-    UI.toast('好，那就留在昨天');
-  }
 };
 
 const Mood = null;
