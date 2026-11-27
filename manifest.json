@@ -1,0 +1,19 @@
+{
+  "name": "王苗苗的个人成长工作台",
+  "short_name": "苗苗成长",
+  "description": "苗苗每天打开的个人成长工作台：待办、打卡、体重、记账、目标与复盘。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef2e6",
+  "theme_color": "#7d9471",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
