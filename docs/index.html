@@ -890,7 +890,7 @@ const App = {
     this.go(this.routes.some(r => r.id === last) ? last : this.routes[0].id);
 
     this.checkBackup();
-    if (typeof Sync !== 'undefined') Sync.init();
+    if (SYNC_ENABLED && typeof Sync !== 'undefined') Sync.init();
   },
 
   /** 重绘当前页。同步拉到新数据后调用 */
@@ -918,9 +918,12 @@ const App = {
 /* ═══════════════════════════════════════════════════════════
    Settings · 设置页
    ═══════════════════════════════════════════════════════════ */
+const SYNC_ENABLED = false;
+
 const Settings = {
   render(){
     this.refreshBackupInfo();
+    if (!SYNC_ENABLED) { document.getElementById('syncCard')?.remove(); return; }
     this.renderSync();
   },
 
