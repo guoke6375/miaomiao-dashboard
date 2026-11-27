@@ -361,11 +361,11 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
 
       <div class="card wide">
         <h2>🧾 改价审核</h2>
-        <p class="hint">客户改了价，要你点头才算数。点下面直接进审核页，处理完再回来记一笔。</p>
+        <p class="hint" id="approvalState">客户改了价，要你点头才算数。</p>
         <div class="row" style="margin-top:12px">
           <a class="btn" href="http://49.232.224.153:3000/admin/price-approvals" target="_blank" rel="noopener">打开改价审核</a>
         </div>
-        <p class="hint">想让它自动显示「待审 N 条」，需要 ERP 那边开一个只读接口。</p>
+        <p class="hint" id="approvalHint">想在卡片上看到「待审 N 条」，去设置里填接口地址。</p>
       </div>
     </section>
     <!-- ==== 功能：今天 END ==== -->
@@ -508,6 +508,20 @@ button.del{color:var(--text-dim);font-size:16px;background:none;border:none;padd
         </div>
         <input type="file" id="importFile" accept=".json" style="display:none" onchange="Store.importFile(this)">
         <p class="hint" id="backupInfo"></p>
+      </div>
+
+      <div class="card">
+        <h2>🧾 改价审核接口</h2>
+        <p class="hint" style="margin-top:0;margin-bottom:12px">
+          填 ERP 提供的只读接口地址，工作台就能显示「待审 N 条」。<br>
+          只有数量，没有客户和价格，填了也只存在这台手机上。
+        </p>
+        <input type="text" id="apUrl" placeholder="https://.../api/public/pending-count" autocomplete="off">
+        <input type="text" id="apKey" placeholder="接口 key（ERP 那边给的）" style="margin-top:8px" autocomplete="off">
+        <div class="row" style="margin-top:10px">
+          <button class="btn" onclick="Approval.save()">保存并测试</button>
+        </div>
+        <p class="hint" id="apState"></p>
       </div>
 
       <!-- ==== 双端同步卡片 START ====（用户选单设备时删掉这张卡） -->
@@ -968,11 +982,72 @@ const App = {
    ═══════════════════════════════════════════════════════════ */
 const SYNC_ENABLED = false;
 
+/* ==== 功能：改价审核 START ==== */
+const Approval = {
+  cfg(){ return Store.get('approvalApi', { url: '', key: '' }); },
+
+  save(){
+    const url = document.getElementById('apUrl').value.trim();
+    const key = document.getElementById('apKey').value.trim();
+    Store.set('approvalApi', { url, key });
+    Store.remove('approvalCache');
+    this.refresh(true);
+    UI.toast(url ? '已保存，正在测试' : '已清空接口');
+  },
+
+  /** 拉一次待审数量。失败不吵，只在卡片上写一句 */
+  async refresh(force){
+    const c = this.cfg();
+    if (!c.url) return this.paint(null);
+
+    const cached = Store.get('approvalCache');
+    if (!force && cached && Date.now() - cached.at < 60000) return this.paint(cached.n);
+
+    try {
+      const url = c.url + (c.url.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(c.key || '');
+      const r = await fetch(url, { cache: 'no-store' });
+      const j = await r.json();
+      const n = Number(j.pending);
+      if (!isFinite(n)) throw new Error('bad payload');
+      Store.set('approvalCache', { n, at: Date.now() });
+      this.paint(n);
+    } catch (e) {
+      this.paint(-1);
+    }
+  },
+
+  paint(n){
+    const el = document.getElementById('approvalState');
+    const hint = document.getElementById('approvalHint');
+    if (el) {
+      if (n === null) el.textContent = '客户改了价，要你点头才算数。';
+      else if (n < 0) el.textContent = '接口没连上，检查地址、key 和跨域设置。';
+      else if (n === 0) el.textContent = '现在没有待审的改价 ✅';
+      else el.innerHTML = `有 <b style="font-size:20px">${n}</b> 条改价等你审。`;
+    }
+    if (hint) hint.style.display = (n === null) ? '' : 'none';
+
+    const st = document.getElementById('apState');
+    if (st) {
+      if (!this.cfg().url) st.textContent = '还没填。';
+      else if (n === null) st.textContent = '';
+      else if (n < 0) st.textContent = '测试失败：接口没返回可用的数字（看下跨域和 key）。';
+      else st.textContent = `测试成功，当前待审 ${n} 条。`;
+    }
+  }
+};
+/* ==== 功能：改价审核 END ==== */
+
 const Settings = {
   render(){
     this.refreshBackupInfo();
-    if (!SYNC_ENABLED) { document.getElementById('syncCard')?.remove(); return; }
-    this.renderSync();
+    const c = Approval.cfg();
+    const u = document.getElementById('apUrl'), k = document.getElementById('apKey');
+    if (u) u.value = c.url || '';
+    if (k) k.value = c.key || '';
+    Approval.paint(Store.get('approvalCache') ? Store.get('approvalCache').n : null);
+    if (SYNC_ENABLED) this.renderSync();
+    else document.getElementById('syncCard')?.remove();
   },
 
   enableSync(){
@@ -1070,6 +1145,8 @@ const Today = {
           <button class="del" onclick="Todo.delTomorrow('${x.id}')">✕</button>
         </div>`).join('')
       : '<div class="empty">明天还没有安排</div>';
+
+    Approval.refresh();
   }
 };
 
